@@ -57,6 +57,7 @@ import { SocksClient } from 'socks';
 import { CLI } from '..';
 import { Pathfinder, NodeUpdate, Point } from '../services/pathfinding';
 import { FailureCode } from '../models/failure-code';
+import { GameId } from '../networking/game-ids';
 
 const MIN_MOVE_SPEED = 0.004;
 const MAX_MOVE_SPEED = 0.0096;
@@ -214,6 +215,7 @@ export class Client {
   private keyTime: number;
   private gameId: number;
   private reconnectCooldown: number;
+  private handleReconnects: boolean;
 
   // packet control
   private blockedPackets: PacketType[];
@@ -258,6 +260,7 @@ export class Client {
     this.alias = accInfo.alias;
     this.proxy = accInfo.proxy;
     this.pathfinderEnabled = accInfo.pathfinder || false;
+    this.handleReconnects = true;
     if (accInfo.charInfo) {
       this.charInfo = accInfo.charInfo;
     } else {
@@ -395,6 +398,14 @@ export class Client {
   changeGameId(gameId: GameId): void {
     Logger.log(this.alias, `Switching gameId to ${gameId}`, LogLevel.Info);
     this.gameId = gameId;
+    this.connect();
+  }
+
+  /**
+   * Connects to nexus faster than sending an escape packet by connecting to the static gameId associated with nexusing. This also works if reconnectHandling is disabled.
+   */
+  escape(): void {
+    this.gameId = GameId.NEXUS;
     this.connect();
   }
 
@@ -639,12 +650,14 @@ export class Client {
 
   @PacketHook()
   private onReconnectPacket(client: Client, reconnectPacket: ReconnectPacket): void {
-    this.internalServer.address = (reconnectPacket.host === '' ? this.nexusServer.address : reconnectPacket.host);
-    this.internalServer.name = (reconnectPacket.host === '' ? this.nexusServer.name : reconnectPacket.name);
-    this.gameId = reconnectPacket.gameId;
-    this.key = reconnectPacket.key;
-    this.keyTime = reconnectPacket.keyTime;
-    this.connect();
+    if (this.handleReconnects) {
+      this.internalServer.address = (reconnectPacket.host === '' ? this.nexusServer.address : reconnectPacket.host);
+      this.internalServer.name = (reconnectPacket.host === '' ? this.nexusServer.name : reconnectPacket.name);
+      this.gameId = reconnectPacket.gameId;
+      this.key = reconnectPacket.key;
+      this.keyTime = reconnectPacket.keyTime;
+      this.connect();
+    }
   }
 
   @PacketHook()
